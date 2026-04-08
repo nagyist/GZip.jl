@@ -37,8 +37,16 @@ function zng_gzread(file::gzFile, buf, len::UInt32)
     ccall((:zng_gzread, ZlibNG_jll.libzng_path), Int32, (gzFile, Ptr{Cvoid}, UInt32), file, buf, len)
 end
 
+function zng_gzfread(buf, size::Csize_t, nitems::Csize_t, file::gzFile)
+    ccall((:zng_gzfread, ZlibNG_jll.libzng_path), Csize_t, (Ptr{Cvoid}, Csize_t, Csize_t, gzFile), buf, size, nitems, file)
+end
+
 function zng_gzwrite(file::gzFile, buf, len::UInt32)
     ccall((:zng_gzwrite, ZlibNG_jll.libzng_path), Int32, (gzFile, Ptr{Cvoid}, UInt32), file, buf, len)
+end
+
+function zng_gzfwrite(buf, size::Csize_t, nitems::Csize_t, file::gzFile)
+    ccall((:zng_gzfwrite, ZlibNG_jll.libzng_path), Csize_t, (Ptr{Cvoid}, Csize_t, Csize_t, gzFile), buf, size, nitems, file)
 end
 
 function zng_gzgets(file::gzFile, buf, len::Int32)

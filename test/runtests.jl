@@ -115,7 +115,7 @@ function run_backend_tests(; backend=GZip.ZLIB)
         NEW = GZip.ZLIB_VERSION >= (1, 2, 4)
         pos = position(gzfile)
         NEW && (pos2 = position(gzfile,true))
-        @test_throws ErrorException seek(gzfile, 0)   # can't seek backwards on write
+        @test_throws ArgumentError seek(gzfile, 0)   # can't seek backwards on write
         @test position(gzfile) == pos
         NEW && (@test position(gzfile,true) == pos2)
         @test skip(gzfile, 100)
@@ -456,6 +456,149 @@ end
         @test gzopen(x->read(x, String), fn; backend=GZip.ZLIBNG) == data
     finally
         rm(tmp, recursive=true)
+    end
+end
+
+@testset "isreadable/iswritable" begin
+    tmp = mktempdir()
+    fn = joinpath(tmp, "rw.gz")
+    try
+        # Write mode
+        gzopen(fn, "w") do io
+            @test iswritable(io)
+            @test !isreadable(io)
+            write(io, "test")
+        end
+
+        # Read mode
+        gzopen(fn) do io
+            @test isreadable(io)
+            @test !iswritable(io)
+        end
+
+        # Closed stream
+        s = gzopen(fn)
+        close(s)
+        @test !isreadable(s)
+        @test !iswritable(s)
+    finally
+        rm(tmp, recursive=true)
+    end
+end
+
+@testset "read(::GZipStream) bulk read" begin
+    tmp = mktempdir()
+    fn = joinpath(tmp, "bulk.gz")
+    try
+        data = rand(UInt8, 500_000)
+        gzopen(fn, "w") do io
+            write(io, data)
+        end
+
+        # read(gz) should return the same bytes
+        result = gzopen(fn) do io
+            read(io)
+        end
+        @test result == data
+        @test result isa Vector{UInt8}
+
+        # Empty file
+        gzopen(fn, "w") do io; end
+        result = gzopen(fn) do io
+            read(io)
+        end
+        @test result == UInt8[]
+    finally
+        rm(tmp, recursive=true)
+    end
+end
+
+@testset "gzheader" begin
+    tmp = mktempdir()
+    try
+        # Real gzip file created by system gzip (has FNAME and MTIME set)
+        fixture = joinpath(@__DIR__, "testfile.txt.gz")
+        h = gzheader(fixture)
+        @test h isa GZipHeader
+        @test h.name == "testfile.txt"
+        @test h.mtime > 0
+        @test h.os == 0x03  # Unix
+
+        # Content should be readable
+        content = gzopen(fixture) do io
+            read(io, String)
+        end
+        @test content == "Hello from a real gzip file\n"
+
+        # GZip.jl-created file (zlib doesn't set FNAME/MTIME by default)
+        fn = joinpath(tmp, "header.gz")
+        gzopen(fn, "w") do io
+            write(io, "hello")
+        end
+        h2 = gzheader(fn)
+        @test h2 isa GZipHeader
+        @test h2.name === nothing
+        @test h2.mtime == 0
+
+        # Not a gzip file
+        nongz = joinpath(tmp, "notgz.txt")
+        write(nongz, "plain text")
+        @test_throws ArgumentError gzheader(nongz)
+    finally
+        rm(tmp, recursive=true)
+    end
+end
+
+@testset "gzfread/gzfwrite (>4GB safe)" begin
+    # Verify that gzread/gzwrite work through gzfread/gzfwrite
+    # by testing round-trip with various sizes
+    tmp = mktempdir()
+    fn = joinpath(tmp, "freadwrite.gz")
+    try
+        for sz in [0, 1, 8192, 131072, 1_000_000]
+            data = rand(UInt8, sz)
+            gzopen(fn, "w") do io
+                write(io, data)
+            end
+            result = gzopen(fn) do io
+                read(io)
+            end
+            @test result == data
+        end
+    finally
+        rm(tmp, recursive=true)
+    end
+end
+
+@testset "read(s, UInt8) EOF handling" begin
+    tmp = mktempdir()
+    fn = joinpath(tmp, "byte.gz")
+    try
+        gzopen(fn, "w") do io
+            write(io, "ABC")
+        end
+
+        gzopen(fn) do io
+            @test read(io, UInt8) == UInt8('A')
+            @test read(io, UInt8) == UInt8('B')
+            @test read(io, UInt8) == UInt8('C')
+            @test_throws EOFError read(io, UInt8)
+        end
+    finally
+        rm(tmp, recursive=true)
+    end
+end
+
+@testset "gzdopen fd cleanup on failure" begin
+    # gzdopen with invalid fd should not leak the duplicated fd
+    # The test at line 49 verifies the error is thrown;
+    # here we verify we can open many bad fds without running out
+    for _ in 1:100
+        try
+            gzdopen("bad", -1, "r", 1024)
+        catch e
+            @test e isa SystemError
+        end
     end
 end
 

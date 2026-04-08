@@ -65,14 +65,14 @@ struct ZlibNGBackend <: GZBackend end
 """
     ZLIB
 
-The default zlib backend. Pass as `backend=GZip.ZLIB` to `gzopen`/`gzdopen`.
+The standard zlib backend. Pass as `backend=GZip.ZLIB` to `gzopen`/`gzdopen`.
 """
 const ZLIB = ZlibBackend()
 
 """
     ZLIBNG
 
-The zlib-ng backend. Pass as `backend=GZip.ZLIBNG` to `gzopen`/`gzdopen`.
+The default zlib-ng backend. Pass as `backend=GZip.ZLIBNG` to `gzopen`/`gzdopen`.
 """
 const ZLIBNG = ZlibNGBackend()
 
@@ -93,8 +93,14 @@ gz_buffer(::ZlibNGBackend, file::GZFile, size) = ZlibNG_h.zng_gzbuffer(reinterpr
 gz_read(::ZlibBackend, file::GZFile, buf, len) = Zlib_h.gzread(reinterpret(Zlib_h.gzFile, file), buf, Cuint(len))
 gz_read(::ZlibNGBackend, file::GZFile, buf, len) = ZlibNG_h.zng_gzread(reinterpret(ZlibNG_h.gzFile, file), buf, UInt32(len))
 
+gz_fread(::ZlibBackend, buf, size, nitems, file::GZFile) = Zlib_h.gzfread(buf, Csize_t(size), Csize_t(nitems), reinterpret(Zlib_h.gzFile, file))
+gz_fread(::ZlibNGBackend, buf, size, nitems, file::GZFile) = ZlibNG_h.zng_gzfread(buf, Csize_t(size), Csize_t(nitems), reinterpret(ZlibNG_h.gzFile, file))
+
 gz_write(::ZlibBackend, file::GZFile, buf, len) = Zlib_h.gzwrite(reinterpret(Zlib_h.gzFile, file), buf, Cuint(len))
 gz_write(::ZlibNGBackend, file::GZFile, buf, len) = ZlibNG_h.zng_gzwrite(reinterpret(ZlibNG_h.gzFile, file), buf, UInt32(len))
+
+gz_fwrite(::ZlibBackend, buf, size, nitems, file::GZFile) = Zlib_h.gzfwrite(buf, Csize_t(size), Csize_t(nitems), reinterpret(Zlib_h.gzFile, file))
+gz_fwrite(::ZlibNGBackend, buf, size, nitems, file::GZFile) = ZlibNG_h.zng_gzfwrite(buf, Csize_t(size), Csize_t(nitems), reinterpret(ZlibNG_h.gzFile, file))
 
 gz_gets(::ZlibBackend, file::GZFile, buf, len) = Zlib_h.gzgets(reinterpret(Zlib_h.gzFile, file), buf, Cint(len))
 gz_gets(::ZlibNGBackend, file::GZFile, buf, len) = ZlibNG_h.zng_gzgets(reinterpret(ZlibNG_h.gzFile, file), buf, Int32(len))

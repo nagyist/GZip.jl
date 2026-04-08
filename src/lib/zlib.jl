@@ -52,8 +52,16 @@ function gzread(file::gzFile, buf, len::Cuint)
     ccall((:gzread, Zlib_jll.libz_path), Cint, (gzFile, Ptr{Cvoid}, Cuint), file, buf, len)
 end
 
+function gzfread(buf, size::Csize_t, nitems::Csize_t, file::gzFile)
+    ccall((:gzfread, Zlib_jll.libz_path), Csize_t, (Ptr{Cvoid}, Csize_t, Csize_t, gzFile), buf, size, nitems, file)
+end
+
 function gzwrite(file::gzFile, buf, len::Cuint)
     ccall((:gzwrite, Zlib_jll.libz_path), Cint, (gzFile, Ptr{Cvoid}, Cuint), file, buf, len)
+end
+
+function gzfwrite(buf, size::Csize_t, nitems::Csize_t, file::gzFile)
+    ccall((:gzfwrite, Zlib_jll.libz_path), Csize_t, (Ptr{Cvoid}, Csize_t, Csize_t, gzFile), buf, size, nitems, file)
 end
 
 function gzgets(file::gzFile, buf, len::Cint)

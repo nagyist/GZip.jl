@@ -359,6 +359,22 @@ function read(s::GZipStream, ::Type{UInt8})
 end
 
 
+function read(s::GZipStream; bufsize::Int = Z_BIG_BUFSIZE)
+    buf = Array{UInt8}(undef, bufsize)
+    len = 0
+    while true
+        ret = gzread(s, pointer(buf)+len, bufsize)
+        if ret == 0
+            if length(buf) > len
+                resize!(buf, len)
+            end
+            return buf
+        end
+        len += ret
+        resize!(buf, bufsize+len)
+    end
+end
+
 # For this function, it's really unfortunate that zlib is
 # not integrated with ios
 function read(s::GZipStream, ::Type{String}; bufsize::Int = Z_BIG_BUFSIZE)

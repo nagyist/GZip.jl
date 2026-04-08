@@ -8,6 +8,9 @@ This module provides a wrapper for the gzip related functions of
 unencumbered, lossless data-compression library. These functions allow
 the reading and writing of gzip files.
 
+Supports both standard zlib (default) and zlib-ng backends. Use
+`backend=GZip.ZLIBNG` when opening files to use the zlib-ng backend.
+
 ## Notes
 
 -   This interface is only for gzipped files, not the streaming zlib
@@ -50,6 +53,13 @@ import Base: show, fd, close, flush, truncate, seek,
 export
   GZipStream,
   show,
+
+# Backend types
+  GZBackend,
+  ZlibBackend,
+  ZlibNGBackend,
+  ZLIB,
+  ZLIBNG,
 
 # io functions
 # open,  ## not exported; use as GZip.open(...)

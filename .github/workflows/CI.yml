@@ -24,10 +24,16 @@ jobs:
           - '1'
         os:
           - ubuntu-latest
-          - macos-latest
           - windows-latest
         arch:
           - x64
+        include:
+          - os: macos-latest
+            arch: aarch64
+            version: 'min'
+          - os: macos-latest
+            arch: aarch64
+            version: '1'
     steps:
       - uses: actions/checkout@v6
       - uses: julia-actions/setup-julia@v2

@@ -1,38 +1,14 @@
-# Load one of the platform-specific Clang.jl generated wrappers
-const IS_LIBC_MUSL = occursin("musl", Base.BUILD_TRIPLET)
-if Sys.isapple() && Sys.ARCH === :aarch64
-    include("lib/aarch64-apple-darwin20.jl")
-elseif Sys.islinux() && Sys.ARCH === :aarch64 && !IS_LIBC_MUSL
-    include("lib/aarch64-linux-gnu.jl")
-elseif Sys.islinux() && Sys.ARCH === :aarch64 && IS_LIBC_MUSL
-    include("lib/aarch64-linux-musl.jl")
-elseif Sys.islinux() && startswith(string(Sys.ARCH), "arm") && !IS_LIBC_MUSL
-    include("lib/armv7l-linux-gnueabihf.jl")
-elseif Sys.islinux() && startswith(string(Sys.ARCH), "arm") && IS_LIBC_MUSL
-    include("lib/armv7l-linux-musleabihf.jl")
-elseif Sys.islinux() && Sys.ARCH === :i686 && !IS_LIBC_MUSL
-    include("lib/i686-linux-gnu.jl")
-elseif Sys.islinux() && Sys.ARCH === :i686 && IS_LIBC_MUSL
-    include("lib/i686-linux-musl.jl")
-elseif Sys.iswindows() && Sys.ARCH === :i686
-    include("lib/i686-w64-mingw32.jl")
-elseif Sys.islinux() && Sys.ARCH === :powerpc64le
-    include("lib/powerpc64le-linux-gnu.jl")
-elseif Sys.isapple() && Sys.ARCH === :x86_64
-    include("lib/x86_64-apple-darwin14.jl")
-elseif Sys.islinux() && Sys.ARCH === :x86_64 && !IS_LIBC_MUSL
-    include("lib/x86_64-linux-gnu.jl")
-elseif Sys.islinux() && Sys.ARCH === :x86_64 && IS_LIBC_MUSL
-    include("lib/x86_64-linux-musl.jl")
-elseif Sys.isbsd() && !Sys.isapple()
-    include("lib/x86_64-unknown-freebsd.jl")
-elseif Sys.iswindows() && Sys.ARCH === :x86_64
-    include("lib/x86_64-w64-mingw32.jl")
-else
-    error("Unknown platform: $(Base.BUILD_TRIPLET)")
-end
+# Load zlib and zlib-ng wrappers
+include("lib/zlib.jl")
+include("lib/zlibng.jl")
 
 using .Zlib_h
+using .Zlib_h: Z_OK, Z_STREAM_END, Z_NEED_DICT, Z_ERRNO, Z_STREAM_ERROR,
+               Z_DATA_ERROR, Z_MEM_ERROR, Z_BUF_ERROR, Z_VERSION_ERROR,
+               Z_NO_COMPRESSION, Z_BEST_SPEED, Z_BEST_COMPRESSION, Z_DEFAULT_COMPRESSION,
+               Z_FILTERED, Z_HUFFMAN_ONLY, Z_RLE, Z_FIXED, Z_DEFAULT_STRATEGY,
+               Z_SYNC_FLUSH
+using .ZlibNG_h
 
 const GZLIB_VERSION = unsafe_string(Zlib_h.zlib_version)
 const ZLIB_VERSION  = let ver = GZLIB_VERSION
@@ -45,26 +21,124 @@ end
 const Z_DEFAULT_BUFSIZE = 8192
 const Z_BIG_BUFSIZE = 131072
 
-# Create ZFileOffset alias
-# Use 64bit if the *64 functions are available or zlib is compiles with 64bit
-# file offset.
+"""
+    ZFileOffset
 
-# Get compile-time option flags
-const zlib_compile_flags = Zlib_h.zlibCompileFlags()
-const z_off_t_sz = 2 << ((zlib_compile_flags >> 6) & UInt(3))
-if z_off_t_sz == 8 || (!Sys.iswindows() && isdefined(GZip.Zlib_h, :gzopen64))
-    const ZFileOffset = Int64
-elseif z_off_t_sz == 4
-    const ZFileOffset = Int32
-else
-    error("Can't figure out what to do with ZFileOffset. sizeof(z_off_t) = ", z_off_t_sz)
-end
+Integer type used for file offsets in zlib, determined from the library's compile flags.
+"""
+const ZFileOffset = Zlib_h.z_off_t
 
-# Zlib errors as Exceptions
-zerror(e::Integer) = unsafe_string(Zlib_h.zError(e))
+"""
+    ZError <: Exception
+
+zlib error, containing an error code and message string.
+"""
 mutable struct ZError <: Exception
     err::Cint
     err_str::AbstractString
-
-    ZError(e::Integer) = (e == Z_ERRNO ? new(e, strerror()) : new(e, zerror(e)))
 end
+
+# --- Backend abstraction ---
+
+"""
+    GZBackend
+
+Abstract type for gzip compression backends. Concrete subtypes are
+[`ZlibBackend`](@ref) and [`ZlibNGBackend`](@ref).
+"""
+abstract type GZBackend end
+
+"""
+    ZlibBackend <: GZBackend
+
+Default backend using the standard zlib library (Zlib_jll).
+"""
+struct ZlibBackend <: GZBackend end
+
+"""
+    ZlibNGBackend <: GZBackend
+
+Alternative backend using zlib-ng (ZlibNG_jll), a high-performance fork of zlib.
+"""
+struct ZlibNGBackend <: GZBackend end
+
+"""
+    ZLIB
+
+The default zlib backend. Pass as `backend=GZip.ZLIB` to `gzopen`/`gzdopen`.
+"""
+const ZLIB = ZlibBackend()
+
+"""
+    ZLIBNG
+
+The zlib-ng backend. Pass as `backend=GZip.ZLIBNG` to `gzopen`/`gzdopen`.
+"""
+const ZLIBNG = ZlibNGBackend()
+
+# Use Ptr{Nothing} as the unified gzFile type to avoid coupling to either wrapper module
+const GZFile = Ptr{Nothing}
+
+# --- Dispatched gz functions ---
+
+gz_open(::ZlibBackend, fname, mode) = reinterpret(GZFile, Zlib_h.gzopen(fname, mode))
+gz_open(::ZlibNGBackend, fname, mode) = reinterpret(GZFile, ZlibNG_h.zng_gzopen(fname, mode))
+
+gz_dopen(::ZlibBackend, fd::Cint, mode) = reinterpret(GZFile, Zlib_h.gzdopen(fd, mode))
+gz_dopen(::ZlibNGBackend, fd::Cint, mode) = reinterpret(GZFile, ZlibNG_h.zng_gzdopen(fd, mode))
+
+gz_buffer(::ZlibBackend, file::GZFile, size) = Zlib_h.gzbuffer(reinterpret(Zlib_h.gzFile, file), Cuint(size))
+gz_buffer(::ZlibNGBackend, file::GZFile, size) = ZlibNG_h.zng_gzbuffer(reinterpret(ZlibNG_h.gzFile, file), UInt32(size))
+
+gz_read(::ZlibBackend, file::GZFile, buf, len) = Zlib_h.gzread(reinterpret(Zlib_h.gzFile, file), buf, Cuint(len))
+gz_read(::ZlibNGBackend, file::GZFile, buf, len) = ZlibNG_h.zng_gzread(reinterpret(ZlibNG_h.gzFile, file), buf, UInt32(len))
+
+gz_write(::ZlibBackend, file::GZFile, buf, len) = Zlib_h.gzwrite(reinterpret(Zlib_h.gzFile, file), buf, Cuint(len))
+gz_write(::ZlibNGBackend, file::GZFile, buf, len) = ZlibNG_h.zng_gzwrite(reinterpret(ZlibNG_h.gzFile, file), buf, UInt32(len))
+
+gz_gets(::ZlibBackend, file::GZFile, buf, len) = Zlib_h.gzgets(reinterpret(Zlib_h.gzFile, file), buf, Cint(len))
+gz_gets(::ZlibNGBackend, file::GZFile, buf, len) = ZlibNG_h.zng_gzgets(reinterpret(ZlibNG_h.gzFile, file), buf, Int32(len))
+
+gz_putc(::ZlibBackend, file::GZFile, c) = Zlib_h.gzputc(reinterpret(Zlib_h.gzFile, file), Cint(c))
+gz_putc(::ZlibNGBackend, file::GZFile, c) = ZlibNG_h.zng_gzputc(reinterpret(ZlibNG_h.gzFile, file), Int32(c))
+
+gz_ungetc(::ZlibBackend, c, file::GZFile) = Zlib_h.gzungetc(Cint(c), reinterpret(Zlib_h.gzFile, file))
+gz_ungetc(::ZlibNGBackend, c, file::GZFile) = ZlibNG_h.zng_gzungetc(Int32(c), reinterpret(ZlibNG_h.gzFile, file))
+
+# gzgetc_ exists in zlib but not zlib-ng; for zlib-ng, use gzread of 1 byte
+gz_getc(::ZlibBackend, file::GZFile) = Zlib_h.gzgetc_(reinterpret(Zlib_h.gzFile, file))
+function gz_getc(::ZlibNGBackend, file::GZFile)
+    buf = Ref{UInt8}(0)
+    ret = ZlibNG_h.zng_gzread(reinterpret(ZlibNG_h.gzFile, file), buf, UInt32(1))
+    ret == 1 ? Cint(buf[]) : Cint(-1)
+end
+
+gz_flush(::ZlibBackend, file::GZFile, fl) = Zlib_h.gzflush(reinterpret(Zlib_h.gzFile, file), Cint(fl))
+gz_flush(::ZlibNGBackend, file::GZFile, fl) = ZlibNG_h.zng_gzflush(reinterpret(ZlibNG_h.gzFile, file), Int32(fl))
+
+gz_seek(::ZlibBackend, file::GZFile, offset, whence) = Zlib_h.gzseek(reinterpret(Zlib_h.gzFile, file), Zlib_h.z_off_t(offset), Cint(whence))
+gz_seek(::ZlibNGBackend, file::GZFile, offset, whence) = ZlibNG_h.zng_gzseek(reinterpret(ZlibNG_h.gzFile, file), ZlibNG_h.z_off64_t(offset), Cint(whence))
+
+gz_rewind(::ZlibBackend, file::GZFile) = Zlib_h.gzrewind(reinterpret(Zlib_h.gzFile, file))
+gz_rewind(::ZlibNGBackend, file::GZFile) = ZlibNG_h.zng_gzrewind(reinterpret(ZlibNG_h.gzFile, file))
+
+gz_tell(::ZlibBackend, file::GZFile) = Zlib_h.gztell(reinterpret(Zlib_h.gzFile, file))
+gz_tell(::ZlibNGBackend, file::GZFile) = ZlibNG_h.zng_gztell(reinterpret(ZlibNG_h.gzFile, file))
+
+gz_offset(::ZlibBackend, file::GZFile) = Zlib_h.gzoffset(reinterpret(Zlib_h.gzFile, file))
+gz_offset(::ZlibNGBackend, file::GZFile) = ZlibNG_h.zng_gzoffset(reinterpret(ZlibNG_h.gzFile, file))
+
+gz_eof(::ZlibBackend, file::GZFile) = Zlib_h.gzeof(reinterpret(Zlib_h.gzFile, file))
+gz_eof(::ZlibNGBackend, file::GZFile) = ZlibNG_h.zng_gzeof(reinterpret(ZlibNG_h.gzFile, file))
+
+gz_direct(::ZlibBackend, file::GZFile) = Zlib_h.gzdirect(reinterpret(Zlib_h.gzFile, file))
+gz_direct(::ZlibNGBackend, file::GZFile) = ZlibNG_h.zng_gzdirect(reinterpret(ZlibNG_h.gzFile, file))
+
+gz_close(::ZlibBackend, file::GZFile) = Zlib_h.gzclose(reinterpret(Zlib_h.gzFile, file))
+gz_close(::ZlibNGBackend, file::GZFile) = ZlibNG_h.zng_gzclose(reinterpret(ZlibNG_h.gzFile, file))
+
+gz_error(::ZlibBackend, file::GZFile, errnum) = Zlib_h.gzerror(reinterpret(Zlib_h.gzFile, file), errnum)
+gz_error(::ZlibNGBackend, file::GZFile, errnum) = ZlibNG_h.zng_gzerror(reinterpret(ZlibNG_h.gzFile, file), errnum)
+
+gz_zerror(::ZlibBackend, e) = unsafe_string(Zlib_h.zError(Cint(e)))
+gz_zerror(::ZlibNGBackend, e) = unsafe_string(ZlibNG_h.zng_zError(Int32(e)))

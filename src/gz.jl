@@ -368,7 +368,7 @@ function read(s::GZipStream, ::Type{String}; bufsize::Int = Z_BIG_BUFSIZE)
     end
 end
 
-function readline(s::GZipStream)
+function readline(s::GZipStream; keep::Bool=false)
     buf = Array{UInt8}(undef, GZ_LINE_BUFSIZE)
     pos = 1
 
@@ -378,11 +378,16 @@ function readline(s::GZipStream)
 
     while(true)
         # since gzgets didn't return C_NULL, there must be a \0 in the buffer
-        # eos = search(buf, '\0', pos)
         eos = findnext(x->x==UInt8('\0'), buf, pos)::Int
-        # @assert eos ≢ nothing
         if eos == 1 || buf[eos-1] == UInt8('\n')
-            return String(copy(resize!(buf, eos-1)))
+            endpos = eos - 1
+            if !keep && endpos >= 1 && buf[endpos] == UInt8('\n')
+                endpos -= 1
+                if endpos >= 1 && buf[endpos] == UInt8('\r')
+                    endpos -= 1
+                end
+            end
+            return String(copy(resize!(buf, endpos)))
         end
 
         # If we're at the end of the file, return the string
@@ -405,8 +410,8 @@ function readline(s::GZipStream)
     end
 end
 
-write(s::GZipStream, b::UInt8) = gzputc(s, b)
-write(s::GZipStream, a::Array{UInt8}) = gzwrite(s, pointer(a), sizeof(a))
-unsafe_write(s::GZipStream, p::Ptr{UInt8}, nb::UInt) = gzwrite(s, p, nb)
+write(s::GZipStream, b::UInt8) = (gzputc(s, b); 1)
+write(s::GZipStream, a::Array{UInt8}) = Int(gzwrite(s, pointer(a), sizeof(a)))
+unsafe_write(s::GZipStream, p::Ptr{UInt8}, nb::UInt) = Int(gzwrite(s, p, nb))
 
 

@@ -76,6 +76,40 @@ try
     end
 end
 
+@testset "readbytes!" begin
+    gzopen(test_compressed, "w") do io
+        write(io, "hello world")
+    end
+    gzopen(test_compressed) do io
+        buf = Vector{UInt8}(undef, 5)
+        @test readbytes!(io, buf) == 5
+        @test buf == b"hello"
+        buf2 = Vector{UInt8}(undef, 100)
+        @test readbytes!(io, buf2) == 6
+        @test buf2[1:6] == b" world"
+    end
+end
+
+@testset "readline keep keyword" begin
+    gzopen(test_compressed, "w") do io
+        write(io, "line1\nline2\nline3")
+    end
+
+    # Default (keep=false) should strip newlines
+    gzopen(test_compressed) do io
+        @test readline(io) == "line1"
+        @test readline(io) == "line2"
+        @test readline(io) == "line3"
+    end
+
+    # keep=true should preserve newlines
+    gzopen(test_compressed) do io
+        @test readline(io; keep=true) == "line1\n"
+        @test readline(io; keep=true) == "line2\n"
+        @test readline(io; keep=true) == "line3"
+    end
+end
+
 @testset "Writing" begin
     data = open(x->read(x, String), test_infile);
 
@@ -101,6 +135,12 @@ end
     gzopen(test_empty, "w") do io
         a = UInt8[]
         @test gzwrite(io, pointer(a), length(a)*sizeof(eltype(a))) == Int32(0)
+    end
+
+    # write(::GZipStream, ::UInt8) should return 1 (byte count, not value)
+    gzopen(test_compressed, "w") do io
+        @test write(io, 0x0a) == 1
+        @test write(io, 0xff) == 1
     end
 
     # Test writing SubArrays (views)
@@ -145,7 +185,7 @@ end
             gzf = gzopen(test_compressed)
             s = IOBuffer()
             while !eof(gzf)
-                write(s, readline(gzf))
+                write(s, readline(gzf; keep=true))
             end
             data2 = String(take!(s));
 

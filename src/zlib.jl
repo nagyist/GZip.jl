@@ -35,7 +35,11 @@ end
 using .Zlib_h
 
 const GZLIB_VERSION = unsafe_string(Zlib_h.zlib_version)
-const ZLIB_VERSION  = tuple([parse(Int, c) for c in split(GZLIB_VERSION, '.')]...)
+const ZLIB_VERSION  = let ver = GZLIB_VERSION
+    # zlib-ng uses format like "1.3.1.zlib-ng" — strip the suffix
+    ver = replace(ver, r"\.?zlib-ng$" => "")
+    tuple([parse(Int, c) for c in split(ver, '.')]...)
+end
 
 # Constants for use with gzbuffer
 const Z_DEFAULT_BUFSIZE = 8192

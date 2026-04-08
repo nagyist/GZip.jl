@@ -110,6 +110,16 @@ try
         @test gzwrite(io, pointer(a), length(a)*sizeof(eltype(a))) == Int32(0)
     end
 
+    # Test writing SubArrays (views)
+    gzfile = gzopen(test_compressed, "wb")
+    arr = collect(0x00:0xff)
+    @test write(gzfile, @view arr[1:128]) == 128
+    @test write(gzfile, @view arr[129:256]) == 128
+    close(gzfile)
+    gzfile = gzopen(test_compressed, "r")
+    @test read(gzfile) == arr
+    close(gzfile)
+
     ##########################
     # test_group("gzip file function tests (strategy read/write)")
     ##########################

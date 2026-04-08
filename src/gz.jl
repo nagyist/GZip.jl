@@ -253,6 +253,7 @@ gzdopen(fd::Integer, gzmode::AbstractString, gz_buf_size::Integer) = gzdopen(str
 gzdopen(fd::Integer, gz_buf_size::Integer) = gzdopen(fd, "rb", gz_buf_size)
 gzdopen(fd::Integer, gzmode::AbstractString) = gzdopen(fd, gzmode, Z_DEFAULT_BUFSIZE)
 gzdopen(fd::Integer) = gzdopen(fd, "rb", Z_DEFAULT_BUFSIZE)
+gzdopen(fd::RawFD, args...) = gzdopen(Base.cconvert(Cint, fd), args...)
 gzdopen(s::IOStream, args...) = gzdopen(fd(s), args...)
 
 
@@ -408,15 +409,4 @@ write(s::GZipStream, b::UInt8) = gzputc(s, b)
 write(s::GZipStream, a::Array{UInt8}) = gzwrite(s, pointer(a), sizeof(a))
 unsafe_write(s::GZipStream, p::Ptr{UInt8}, nb::UInt) = gzwrite(s, p, nb)
 
-function write(s::GZipStream, a::SubArray{T,N,Array}) where {T,N}
-    if !isbitstype(T) || stride(a,1)!=1
-        return invoke(write, Tuple{Any,AbstractArray}, s, a)
-    end
-    colsz = size(a,1)*sizeof(T)
-    if N==1
-        write(s, pointer(a, 1), colsz)
-    else
-        cartesian_map((idxs...)->write(s, pointer(a, idxs), colsz),
-                      tuple(1, size(a)[2:end]...))
-    end
-end
+

@@ -69,8 +69,17 @@ end
 # ZError constructor needs backend for gz_zerror dispatch
 ZError(e::Integer, backend::GZBackend=ZLIBNG) = (e == Z_ERRNO ? ZError(e, strerror()) : ZError(e, gz_zerror(backend, e)))
 
-# show
-show(io::IO, s::GZipStream) = print(io, "GZipStream(", s.name, s._closed ? " [closed]" : "", ")")
+function show(io::IO, s::GZipStream)
+    print(io, "GZipStream(", s.name)
+    if s._closed
+        print(io, " [closed]")
+    else
+        print(io, s._write ? " [write]" : " [read]")
+        backend_name = s.backend isa ZlibNGBackend ? "zlib-ng" : "zlib"
+        print(io, " ", backend_name)
+    end
+    print(io, ")")
+end
 
 macro test_eof_gzerr(s, cc, val)
     quote

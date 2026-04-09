@@ -1,4 +1,6 @@
 using GZip
+using GZip: gzgetc, gzungetc, gzgets, gzputc, gzwrite, gzread, gzbuffer,
+            Z_OK
 using Test
 
 test_infile = @__FILE__

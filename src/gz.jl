@@ -15,7 +15,7 @@ Subtype of `IO` which wraps a gzip stream. Returned by [`gzopen`](@ref) and
 [`gzdopen`](@ref). Parameterized by the backend (`ZlibBackend` or `ZlibNGBackend`).
 """
 mutable struct GZipStream{B<:GZBackend} <: IO
-    name::AbstractString
+    name::String
     gz_file::GZFile
     buf_size::Int
     backend::B
@@ -23,7 +23,7 @@ mutable struct GZipStream{B<:GZBackend} <: IO
     _write::Bool
 
     function GZipStream(name::AbstractString, gz_file::GZFile, buf_size::Int, backend::B, write::Bool=false) where {B<:GZBackend}
-        x = new{B}(name, gz_file, buf_size, backend, false, write)
+        x = new{B}(String(name), gz_file, buf_size, backend, false, write)
         finalizer(close, x)
         x
     end
@@ -57,13 +57,13 @@ gzip error number and string. Possible error values:
 |  `Z_BUF_ERROR`       |  Input buffer full/output buffer empty                    |
 |  `Z_VERSION_ERROR`   |  zlib library version is incompatible with caller version |
 """
-mutable struct GZError <: Exception
+struct GZError <: Exception
     err::Int32
-    err_str::AbstractString
+    err_str::String
 
-    GZError(e::Integer, str::AbstractString) = new(Int32(e), str)
-    GZError(e::Integer, s::GZipStream) = (a = gzerror(e, s); new(a[1], a[2]))
-    GZError(s::GZipStream) = (a = gzerror(s); new(a[1], a[2]))
+    GZError(e::Integer, str::AbstractString) = new(Int32(e), String(str))
+    GZError(e::Integer, s::GZipStream) = (a = gzerror(e, s); new(a[1], String(a[2])))
+    GZError(s::GZipStream) = (a = gzerror(s); new(a[1], String(a[2])))
 end
 
 # ZError constructor needs backend for gz_zerror dispatch
@@ -239,7 +239,7 @@ function gzopen(fname::AbstractString, gzmode::AbstractString, gz_buf_size::Inte
             gz_buf_size = Z_DEFAULT_BUFSIZE
         end
     end
-    iswrite = occursin(r"[wa]", gzmode)
+    iswrite = ('w' in gzmode || 'a' in gzmode)
     s = GZipStream(fname, gz_file, gz_buf_size, backend, iswrite)
     iswrite || peek(s) # Set EOF-bit for empty files (read mode only)
     return s
@@ -293,7 +293,7 @@ function gzdopen(name::AbstractString, fd::Integer, gzmode::AbstractString, gz_b
             gz_buf_size = Z_DEFAULT_BUFSIZE
         end
     end
-    iswrite = occursin(r"[wa]", gzmode)
+    iswrite = ('w' in gzmode || 'a' in gzmode)
     s = GZipStream(name, gz_file, gz_buf_size, backend, iswrite)
     iswrite || peek(s) # Set EOF-bit for empty files (read mode only)
     return s

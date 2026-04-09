@@ -222,7 +222,7 @@ function run_backend_tests(; backend=GZip.ZLIB)
 
                 # Ordered array
                 b = zeros(T, BUFSIZE)
-                if !isa(T, Complex)
+                if !(T <: Complex)
                     for i = 1:length(b)
                         b[i] = (i-1)%minval;
                     end
@@ -233,14 +233,13 @@ function run_backend_tests(; backend=GZip.ZLIB)
                 end
 
                 # Random array
-                if isa(T, AbstractFloat)
-                    r = (T)[rand(BUFSIZE)...];
-                elseif isa(T, ComplexF32)
-                    r = Int32[rand(BUFSIZE)...] + Int32[rand(BUFSIZE)...] * im
-                elseif isa(T, ComplexF64)
-                    r = Int64[rand(BUFSIZE)...] + Int64[rand(BUFSIZE)...] * im
+                if T <: AbstractFloat
+                    r = T.(rand(BUFSIZE))
+                elseif T <: Complex
+                    RT = real(T)
+                    r = Complex{RT}.(rand(RT, BUFSIZE), rand(RT, BUFSIZE))
                 else
-                    r = b[rand(1:BUFSIZE, BUFSIZE)];
+                    r = b[rand(1:BUFSIZE, BUFSIZE)]
                 end
 
                 # Array file

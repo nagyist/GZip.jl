@@ -48,7 +48,8 @@ using Base.Libc
 
 import Base: show, fd, close, flush, truncate, seek,
              seekend, skip, position, eof, read,
-             readline, write, unsafe_write, peek
+             readline, write, unsafe_write, peek,
+             isreadable, iswritable
 
 export
   GZipStream,
@@ -116,6 +117,10 @@ export
   Z_RLE,
   Z_FIXED,
   Z_DEFAULT_STRATEGY,
+
+# Header metadata
+  GZipHeader,
+  gzheader,
 
 # Default buffer sizes
   Z_DEFAULT_BUFSIZE,

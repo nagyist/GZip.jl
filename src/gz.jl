@@ -9,7 +9,7 @@ const SEEK_CUR =  Cint(1)
 """
     GZipStream <: IO
 
-    GZipStream(name, gz_file, [buf_size]; backend=ZLIB)
+    GZipStream(name, gz_file, [buf_size]; backend=ZLIBNG)
 
 Subtype of `IO` which wraps a gzip stream. Returned by [`gzopen`](@ref) and
 [`gzdopen`](@ref). Parameterized by the backend (`ZlibBackend` or `ZlibNGBackend`).
@@ -20,9 +20,10 @@ mutable struct GZipStream{B<:GZBackend} <: IO
     buf_size::Int
     backend::B
     _closed::Bool
+    _write::Bool
 
-    function GZipStream(name::AbstractString, gz_file::GZFile, buf_size::Int, backend::B) where {B<:GZBackend}
-        x = new{B}(name, gz_file, buf_size, backend, false)
+    function GZipStream(name::AbstractString, gz_file::GZFile, buf_size::Int, backend::B, write::Bool=false) where {B<:GZBackend}
+        x = new{B}(name, gz_file, buf_size, backend, false, write)
         finalizer(close, x)
         x
     end
@@ -66,10 +67,10 @@ mutable struct GZError <: Exception
 end
 
 # ZError constructor needs backend for gz_zerror dispatch
-ZError(e::Integer, backend::GZBackend=ZLIB) = (e == Z_ERRNO ? ZError(e, strerror()) : ZError(e, gz_zerror(backend, e)))
+ZError(e::Integer, backend::GZBackend=ZLIBNG) = (e == Z_ERRNO ? ZError(e, strerror()) : ZError(e, gz_zerror(backend, e)))
 
 # show
-show(io::IO, s::GZipStream) = print(io, "GZipStream(", s.name, ")")
+show(io::IO, s::GZipStream) = print(io, "GZipStream(", s.name, s._closed ? " [closed]" : "", ")")
 
 macro test_eof_gzerr(s, cc, val)
     quote
@@ -96,15 +97,6 @@ macro test_gzerror(s, cc, val)
         if $(esc(s))._closed throw(EOFError()) end
         ret = $(esc(cc))
         if ret == $(esc(val)) throw(GZError(ret, $(esc(s)))) end
-        ret
-    end
-end
-
-macro test_gzerror0(s, cc)
-    quote
-        if $(esc(s))._closed throw(EOFError()) end
-        ret = $(esc(cc))
-        if ret <= 0 throw(GZError(ret, $(esc(s)))) end
         ret
     end
 end
@@ -155,17 +147,35 @@ gzputc(s::GZipStream, c::Integer) = @test_gzerror(s, gz_putc(s.backend, s.gz_fil
     gzwrite(s::GZipStream, p::Ptr, len::Integer)
 
 Write `len` bytes from pointer `p` to the stream. Returns the number of bytes written.
+Uses `gzfwrite` which supports >4GB writes on 64-bit systems.
 """
-gzwrite(s::GZipStream, p::Ptr, len::Integer) =
-    len == 0 ? Cint(0) : @test_gzerror0(s, gz_write(s.backend, s.gz_file, reinterpret(Ptr{Cvoid}, p), Cuint(len)))
+function gzwrite(s::GZipStream, p::Ptr, len::Integer)
+    s._closed && throw(EOFError())
+    len == 0 && return Int(0)
+    ret = gz_fwrite(s.backend, reinterpret(Ptr{Cvoid}, p), Csize_t(1), Csize_t(len), s.gz_file)
+    ret == 0 && len > 0 && throw(GZError(s))
+    Int(ret)
+end
 
 """
     gzread(s::GZipStream, p::Ptr, len::Integer)
 
-Read `len` bytes from the stream into the buffer at pointer `p`. Returns the number of bytes read.
+Read up to `len` bytes from the stream into the buffer at pointer `p`. Returns the number of bytes read.
+Uses `gzfread` which supports >4GB reads on 64-bit systems.
 """
-gzread(s::GZipStream, p::Ptr, len::Integer) =
-    @test_gzerror(s, gz_read(s.backend, s.gz_file, reinterpret(Ptr{Cvoid}, p), Cuint(len)), -1)
+function gzread(s::GZipStream, p::Ptr, len::Integer)
+    s._closed && throw(EOFError())
+    len == 0 && return Int(0)
+    ret = gz_fread(s.backend, reinterpret(Ptr{Cvoid}, p), Csize_t(1), Csize_t(len), s.gz_file)
+    # gzfread returns short count on both EOF and error; check gzerror to distinguish
+    if ret < len
+        err, msg = gzerror(s)
+        if err != Z_OK && err != Z_STREAM_END
+            throw(GZError(err, msg))
+        end
+    end
+    Int(ret)
+end
 
 """
     gzbuffer(backend::GZBackend, gz_file, gz_buf_size::Integer)
@@ -177,7 +187,7 @@ gzbuffer(backend::GZBackend, gz_file::GZFile, gz_buf_size::Integer) = gz_buffer(
 #####
 
 """
-    gzopen(fname::AbstractString, [gzmode::AbstractString, buf_size::Integer]; backend=ZLIB)::GZipStream
+    gzopen(fname::AbstractString, [gzmode::AbstractString, buf_size::Integer]; backend=ZLIBNG)::GZipStream
 
 Opens a file with mode (default `"r"`), setting internal buffer size to
 buf\\_size (default `Z_DEFAULT_BUFSIZE=8192`), and returns a the file as a
@@ -209,10 +219,10 @@ and/or a compression strategy:
 
 Note that `+` is not allowed in `gzmode`. If an error occurs, `gzopen` throws a [`GZError`](@ref).
 
-Use `backend=GZip.ZLIBNG` to use the zlib-ng backend instead of the default zlib.
+Use `backend=GZip.ZLIB` to use the standard zlib backend instead of the default zlib-ng.
 """
 function gzopen(fname::AbstractString, gzmode::AbstractString, gz_buf_size::Integer;
-                backend::GZBackend=ZLIB)
+                backend::GZBackend=ZLIBNG)
     # For windows, force binary mode; doesn't hurt on unix
     if !('b' in gzmode)
         gzmode *= "b"
@@ -225,18 +235,20 @@ function gzopen(fname::AbstractString, gzmode::AbstractString, gz_buf_size::Inte
     end
     if gz_buf_size != Z_DEFAULT_BUFSIZE
         if gzbuffer(backend, gz_file, gz_buf_size) == -1
+            @warn "gzbuffer failed, using default buffer size" requested=gz_buf_size default=Z_DEFAULT_BUFSIZE
             gz_buf_size = Z_DEFAULT_BUFSIZE
         end
     end
-    s = GZipStream(fname, gz_file, gz_buf_size, backend)
-    peek(s) # Set EOF-bit for empty files
+    iswrite = occursin(r"[wa]", gzmode)
+    s = GZipStream(fname, gz_file, gz_buf_size, backend, iswrite)
+    iswrite || peek(s) # Set EOF-bit for empty files (read mode only)
     return s
 end
-gzopen(fname::AbstractString, gzmode::AbstractString; backend::GZBackend=ZLIB) = gzopen(fname, gzmode, Z_DEFAULT_BUFSIZE; backend)
-gzopen(fname::AbstractString; backend::GZBackend=ZLIB) = gzopen(fname, "rb", Z_DEFAULT_BUFSIZE; backend)
+gzopen(fname::AbstractString, gzmode::AbstractString; backend::GZBackend=ZLIBNG) = gzopen(fname, gzmode, Z_DEFAULT_BUFSIZE; backend)
+gzopen(fname::AbstractString; backend::GZBackend=ZLIBNG) = gzopen(fname, "rb", Z_DEFAULT_BUFSIZE; backend)
 
 """
-    open(fname::AbstractString, [gzmode, bufsize]; backend=ZLIB)::GZipStream
+    open(fname::AbstractString, [gzmode, bufsize]; backend=ZLIBNG)::GZipStream
 
 Alias for [`gzopen`](@ref). This is not exported, and must be called using `GZip.open`.
 """
@@ -250,13 +262,13 @@ function gzopen(f::Function, args...; kwargs...)
 end
 
 """
-    gzdopen(fd, [gzmode, buf_size]; backend=ZLIB)
+    gzdopen(fd, [gzmode, buf_size]; backend=ZLIBNG)
 
 Create a `GZipStream` object from an integer file descriptor.
 See [`gzopen`](@ref) for `gzmode` and `buf_size` descriptions.
 """
 function gzdopen(name::AbstractString, fd::Integer, gzmode::AbstractString, gz_buf_size::Integer;
-                 backend::GZBackend=ZLIB)
+                 backend::GZBackend=ZLIBNG)
     if !('b' in gzmode)
         gzmode *= "b"
     end
@@ -268,26 +280,33 @@ function gzdopen(name::AbstractString, fd::Integer, gzmode::AbstractString, gz_b
     gz_file = gz_dopen(backend, reinterpret(Cint, dup_fd), gzmode)
     if gz_file == C_NULL
         errno = Libc.errno()
+        @static if Sys.iswindows()
+            ccall(:_close, Cint, (Cint,), reinterpret(Cint, dup_fd))
+        else
+            ccall(:close, Cint, (Cint,), reinterpret(Cint, dup_fd))
+        end
         throw(SystemError("$(name)", errno))
     end
     if gz_buf_size != Z_DEFAULT_BUFSIZE
         if gzbuffer(backend, gz_file, gz_buf_size) == -1
+            @warn "gzbuffer failed, using default buffer size" requested=gz_buf_size default=Z_DEFAULT_BUFSIZE
             gz_buf_size = Z_DEFAULT_BUFSIZE
         end
     end
-    s = GZipStream(name, gz_file, gz_buf_size, backend)
-    peek(s) # Set EOF-bit for empty files
+    iswrite = occursin(r"[wa]", gzmode)
+    s = GZipStream(name, gz_file, gz_buf_size, backend, iswrite)
+    iswrite || peek(s) # Set EOF-bit for empty files (read mode only)
     return s
 end
-gzdopen(fd::Integer, gzmode::AbstractString, gz_buf_size::Integer; backend::GZBackend=ZLIB) = gzdopen(string("<fd ",fd,">"), fd, gzmode, gz_buf_size; backend)
-gzdopen(fd::Integer, gz_buf_size::Integer; backend::GZBackend=ZLIB) = gzdopen(fd, "rb", gz_buf_size; backend)
-gzdopen(fd::Integer, gzmode::AbstractString; backend::GZBackend=ZLIB) = gzdopen(fd, gzmode, Z_DEFAULT_BUFSIZE; backend)
-gzdopen(fd::Integer; backend::GZBackend=ZLIB) = gzdopen(fd, "rb", Z_DEFAULT_BUFSIZE; backend)
+gzdopen(fd::Integer, gzmode::AbstractString, gz_buf_size::Integer; backend::GZBackend=ZLIBNG) = gzdopen(string("<fd ",fd,">"), fd, gzmode, gz_buf_size; backend)
+gzdopen(fd::Integer, gz_buf_size::Integer; backend::GZBackend=ZLIBNG) = gzdopen(fd, "rb", gz_buf_size; backend)
+gzdopen(fd::Integer, gzmode::AbstractString; backend::GZBackend=ZLIBNG) = gzdopen(fd, gzmode, Z_DEFAULT_BUFSIZE; backend)
+gzdopen(fd::Integer; backend::GZBackend=ZLIBNG) = gzdopen(fd, "rb", Z_DEFAULT_BUFSIZE; backend)
 gzdopen(fd::RawFD, args...; kwargs...) = gzdopen(Base.cconvert(Cint, fd), args...; kwargs...)
 gzdopen(s::IOStream, args...; kwargs...) = gzdopen(fd(s), args...; kwargs...)
 
 
-fd(s::GZipStream) = error("fd is not supported for GZipStreams")
+fd(s::GZipStream) = throw(MethodError(fd, (s,)))
 
 function close(s::GZipStream)
     if s._closed
@@ -295,12 +314,13 @@ function close(s::GZipStream)
     end
     s._closed = true
 
-    s.name *= " (closed)"
-
     ret = (@test_z_ok s gz_close(s.backend, s.gz_file))
 
     return ret
 end
+
+isreadable(s::GZipStream) = !s._closed && !s._write
+iswritable(s::GZipStream) = !s._closed && s._write
 
 flush(s::GZipStream, fl::Integer) =
     @test_z_ok s gz_flush(s.backend, s.gz_file, Cint(fl))
@@ -310,13 +330,14 @@ truncate(s::GZipStream, n::Integer) = throw(MethodError(truncate, (GZipStream, I
 
 # Note: seeks to byte position within uncompressed data stream
 function seek(s::GZipStream, n::Integer)
-    gz_seek(s.backend, s.gz_file, n, SEEK_SET) != -1 || error("seek (gzseek) failed")
+    gz_seek(s.backend, s.gz_file, n, SEEK_SET) != -1 || throw(ArgumentError("seek failed: cannot seek to position $n"))
 end
 
 # Note: skips bytes within uncompressed data stream
 # Mimic behavior of skip(s::IOStream, n)
-skip(s::GZipStream, n::Integer) =
-    gz_seek(s.backend, s.gz_file, n, SEEK_CUR) != -1 || error("skip (gzseek) failed")
+function skip(s::GZipStream, n::Integer)
+    gz_seek(s.backend, s.gz_file, n, SEEK_CUR) != -1 || throw(ArgumentError("skip failed: cannot skip $n bytes"))
+end
 
 position(s::GZipStream, raw::Bool=false) = raw ? gz_offset(s.backend, s.gz_file) : gz_tell(s.backend, s.gz_file)
 
@@ -334,11 +355,7 @@ end
 function read(s::GZipStream, a::Array{T}) where {T}
     if isbitstype(T)
         nb = length(a)*sizeof(T)
-        # Note: this will overflow and succeed without warning if nb > 4GB
-        ret = gz_read(s.backend, s.gz_file, reinterpret(Ptr{Cvoid}, pointer(a)), Cuint(nb))
-        if ret == -1
-            throw(GZError(s))
-        end
+        ret = gzread(s, pointer(a), nb)
         if ret < nb
             throw(EOFError())
         end
@@ -350,10 +367,7 @@ function read(s::GZipStream, a::Array{T}) where {T}
 end
 
 function read(s::GZipStream, ::Type{UInt8})
-    ret = gzgetc(s)
-    if ret == -1
-        throw(GZError(s))
-    end
+    ret = gzgetc(s)  # throws EOFError or GZError on failure
     peek(s) # force eof to be set
     UInt8(ret)
 end
@@ -363,15 +377,15 @@ function read(s::GZipStream; bufsize::Int = Z_BIG_BUFSIZE)
     buf = Array{UInt8}(undef, bufsize)
     len = 0
     while true
-        ret = gzread(s, pointer(buf)+len, bufsize)
+        ret = gzread(s, pointer(buf)+len, length(buf)-len)
         if ret == 0
-            if length(buf) > len
-                resize!(buf, len)
-            end
+            resize!(buf, len)
             return buf
         end
         len += ret
-        resize!(buf, bufsize+len)
+        if len == length(buf)
+            resize!(buf, max(length(buf) * 2, bufsize))
+        end
     end
 end
 
@@ -439,3 +453,152 @@ end
 write(s::GZipStream, b::UInt8) = (gzputc(s, b); 1)
 write(s::GZipStream, a::Array{UInt8}) = Int(gzwrite(s, pointer(a), sizeof(a)))
 unsafe_write(s::GZipStream, p::Ptr{UInt8}, nb::UInt) = Int(gzwrite(s, p, nb))
+
+# ---------------------------------------------------------------------------
+# Gzip header metadata (RFC 1952)
+# ---------------------------------------------------------------------------
+
+# Gzip header flag bits
+const FTEXT    = 0x01
+const FHCRC    = 0x02
+const FEXTRA   = 0x04
+const FNAME    = 0x08
+const FCOMMENT = 0x10
+
+# OS identifiers
+const GZ_OS_NAMES = Dict{UInt8,String}(
+    0x00 => "FAT (MS-DOS, OS/2, NT/Win32)",
+    0x01 => "Amiga",
+    0x02 => "VMS (or OpenVMS)",
+    0x03 => "Unix",
+    0x04 => "VM/CMS",
+    0x05 => "Atari TOS",
+    0x06 => "HPFS (OS/2, NT)",
+    0x07 => "Macintosh",
+    0x08 => "Z-System",
+    0x09 => "CP/M",
+    0x0a => "TOPS-20",
+    0x0b => "NTFS (NT)",
+    0x0c => "QDOS",
+    0x0d => "Acorn RISCOS",
+    0xff => "unknown",
+)
+
+"""
+    GZipHeader
+
+Gzip file header metadata (RFC 1952).
+
+Fields:
+- `mtime::UInt32` — modification time as Unix timestamp (0 = not set)
+- `os::UInt8` — operating system identifier
+- `xfl::UInt8` — extra flags (2 = best compression, 4 = fastest)
+- `name::Union{String,Nothing}` — original filename
+- `comment::Union{String,Nothing}` — file comment
+- `extra::Union{Vector{UInt8},Nothing}` — extra field data
+- `is_text::Bool` — hint that content is ASCII text
+"""
+struct GZipHeader
+    mtime::UInt32
+    os::UInt8
+    xfl::UInt8
+    name::Union{String,Nothing}
+    comment::Union{String,Nothing}
+    extra::Union{Vector{UInt8},Nothing}
+    is_text::Bool
+end
+
+function Base.show(io::IO, h::GZipHeader)
+    print(io, "GZipHeader(")
+    if h.name !== nothing
+        print(io, "name=", repr(h.name), ", ")
+    end
+    if h.mtime != 0
+        print(io, "mtime=", Libc.strftime("%Y-%m-%d %H:%M:%S", h.mtime), ", ")
+    end
+    print(io, "os=", get(GZ_OS_NAMES, h.os, "unknown (0x$(string(h.os, base=16)))"))
+    if h.comment !== nothing
+        print(io, ", comment=", repr(h.comment))
+    end
+    if h.extra !== nothing
+        print(io, ", extra=", length(h.extra), " bytes")
+    end
+    print(io, ")")
+end
+
+"""
+    gzheader(filename::AbstractString) -> GZipHeader
+
+Read the gzip header metadata from a `.gz` file without decompressing.
+Returns a [`GZipHeader`](@ref) struct with modification time, original filename,
+comment, OS identifier, and extra field data.
+
+```julia
+h = gzheader("data.gz")
+h.name     # original filename, or nothing
+h.mtime    # modification time as Unix timestamp
+h.comment  # file comment, or nothing
+```
+"""
+function gzheader(filename::AbstractString)
+    Base.open(filename, "r") do io
+        _read_gzheader(io)
+    end
+end
+
+function _read_gzheader(io::IO)
+    # Magic number
+    id1 = read(io, UInt8)
+    id2 = read(io, UInt8)
+    (id1 == 0x1f && id2 == 0x8b) || throw(ArgumentError("not a gzip file"))
+
+    # Compression method
+    cm = read(io, UInt8)
+    cm == 0x08 || throw(ArgumentError("unsupported compression method: $cm"))
+
+    # Flags
+    flg = read(io, UInt8)
+
+    # Modification time (little-endian uint32)
+    mtime = ltoh(read(io, UInt32))
+
+    # Extra flags and OS
+    xfl = read(io, UInt8)
+    os = read(io, UInt8)
+
+    # FEXTRA
+    extra = nothing
+    if (flg & FEXTRA) != 0
+        xlen = ltoh(read(io, UInt16))
+        extra = read(io, xlen)
+    end
+
+    # FNAME (null-terminated)
+    name = nothing
+    if (flg & FNAME) != 0
+        name = _read_cstring(io)
+    end
+
+    # FCOMMENT (null-terminated)
+    comment = nothing
+    if (flg & FCOMMENT) != 0
+        comment = _read_cstring(io)
+    end
+
+    # FHCRC (skip 2-byte CRC16)
+    if (flg & FHCRC) != 0
+        read(io, UInt16)
+    end
+
+    GZipHeader(mtime, os, xfl, name, comment, extra, (flg & FTEXT) != 0)
+end
+
+function _read_cstring(io::IO)
+    buf = UInt8[]
+    while true
+        b = read(io, UInt8)
+        b == 0x00 && break
+        push!(buf, b)
+    end
+    String(buf)
+end

@@ -12,7 +12,6 @@ makedocs(
         "GZip" => "index.md",
         "Reference" => "reference.md",
     ],
-    warnonly = [:missing_docs],
 )
 
 deploydocs(repo = "github.com/JuliaIO/GZip.jl", devbranch = "master")

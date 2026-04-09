@@ -395,16 +395,15 @@ function read(s::GZipStream, ::Type{String}; bufsize::Int = Z_BIG_BUFSIZE)
     buf = Array{UInt8}(undef, bufsize)
     len = 0
     while true
-        ret = gzread(s, pointer(buf)+len, bufsize)
+        ret = gzread(s, pointer(buf)+len, length(buf)-len)
         if ret == 0
-            if length(buf) > len
-                resize!(buf, len)
-            end
+            resize!(buf, len)
             return String(copy(buf))
         end
         len += ret
-        # Grow the buffer so that bufsize bytes will fit
-        resize!(buf, bufsize+len)
+        if len == length(buf)
+            resize!(buf, max(length(buf) * 2, bufsize))
+        end
     end
 end
 

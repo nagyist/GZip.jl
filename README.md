@@ -52,7 +52,7 @@ Both packages use zlib under the hood but serve different use cases:
 
 **Use GZip.jl** when you need file-oriented gzip I/O with seeking, zlib-ng performance, or header metadata access.
 
-**Use [CodecZlib.jl](https://github.com/JuliaIO/CodecZlib.jl)** when you need one-shot in-memory compression (`transcode`), composable stream pipelines, or raw deflate/zlib formats.
+**Use [ChunkCodecLibZlib.jl](https://github.com/JuliaIO/ChunkCodecs.jl/tree/main/LibZlib)** when you need one-shot in-memory compression with configurable compression level and output size hints.
 
 ## Documentation
 

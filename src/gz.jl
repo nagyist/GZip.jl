@@ -280,7 +280,11 @@ function gzdopen(name::AbstractString, fd::Integer, gzmode::AbstractString, gz_b
     gz_file = gz_dopen(backend, reinterpret(Cint, dup_fd), gzmode)
     if gz_file == C_NULL
         errno = Libc.errno()
-        ccall(:close, Cint, (Cint,), reinterpret(Cint, dup_fd))
+        @static if Sys.iswindows()
+            ccall(:_close, Cint, (Cint,), reinterpret(Cint, dup_fd))
+        else
+            ccall(:close, Cint, (Cint,), reinterpret(Cint, dup_fd))
+        end
         throw(SystemError("$(name)", errno))
     end
     if gz_buf_size != Z_DEFAULT_BUFSIZE

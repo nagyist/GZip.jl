@@ -156,13 +156,13 @@ Run benchmarks yourself with `julia --project=. test/benchmarks.jl` (see `test/R
 
 GZip.jl is designed for file-based gzip I/O. For one-shot in-memory compression
 and decompression (like Python's `gzip.compress()` / `gzip.decompress()`), use
-[CodecZlib.jl](https://github.com/JuliaIO/CodecZlib.jl) which wraps zlib's
-streaming `deflate`/`inflate` API:
+[ChunkCodecLibZlib.jl](https://github.com/JuliaIO/ChunkCodecs.jl/tree/main/LibZlib)
+which supports setting compression level and output size hints:
 
 ```julia
-using CodecZlib
-compressed = transcode(GzipCompressor, data)
-decompressed = transcode(GzipDecompressor, compressed)
+using ChunkCodecLibZlib
+compressed = encode(ZlibCompressCodec(), data)
+decompressed = decode(ZlibDecompressCodec(), compressed)
 ```
 
 ## Notes

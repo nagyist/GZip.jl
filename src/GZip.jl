@@ -65,8 +65,7 @@ export
   ZLIB,
   ZLIBNG,
 
-# io functions
-# open,  ## not exported; use as GZip.open(...)
+# IO functions (open is not exported; use GZip.open)
   gzopen,
   gzdopen,
   fd,
@@ -83,45 +82,21 @@ export
   unsafe_write,
   peek,
 
-# File offset
-  ZFileOffset,
-
-# GZError, ZError, related constants (zlib_h.jl)
+# Errors
   GZError,
   ZError,
-  Z_OK,
-  Z_STREAM_END,
-  Z_NEED_DICT,
-  Z_ERRNO,
-  Z_STREAM_ERROR,
-  Z_DATA_ERROR,
-  Z_MEM_ERROR,
-  Z_BUF_ERROR,
-  Z_VERSION_ERROR,
-
-# Compression constants (zlib_h.jl)
-  Z_NO_COMPRESSION,
-  Z_BEST_SPEED,
-  Z_BEST_COMPRESSION,
-  Z_DEFAULT_COMPRESSION,
-
-# Compression strategy (zlib_h.jl)
-  Z_FILTERED,
-  Z_HUFFMAN_ONLY,
-  Z_RLE,
-  Z_FIXED,
-  Z_DEFAULT_STRATEGY,
 
 # Header metadata
   GZipHeader,
-  gzheader,
+  gzheader
 
-# Default buffer sizes
-  Z_DEFAULT_BUFSIZE,
-  Z_BIG_BUFSIZE
-
-# Low-level C wrappers are not exported but accessible as GZip.gzgetc, etc:
-# gzgetc, gzungetc, gzgets, gzputc, gzwrite, gzread, gzbuffer
+# Not exported but accessible via GZip.X:
+#   Z_OK, Z_STREAM_END, Z_ERRNO, ... (error codes)
+#   Z_NO_COMPRESSION, Z_BEST_SPEED, ... (compression levels)
+#   Z_FILTERED, Z_HUFFMAN_ONLY, ...     (strategies)
+#   Z_DEFAULT_BUFSIZE, Z_BIG_BUFSIZE    (buffer sizes)
+#   ZFileOffset                          (offset type alias)
+#   gzgetc, gzungetc, gzgets, ...       (low-level C wrappers)
 
 include("zlib.jl")
 include("gz.jl")

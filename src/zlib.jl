@@ -33,9 +33,9 @@ const ZFileOffset = Zlib_h.z_off_t
 
 zlib error, containing an error code and message string.
 """
-mutable struct ZError <: Exception
+struct ZError <: Exception
     err::Cint
-    err_str::AbstractString
+    err_str::String
 end
 
 # --- Backend abstraction ---
@@ -51,14 +51,14 @@ abstract type GZBackend end
 """
     ZlibBackend <: GZBackend
 
-Default backend using the standard zlib library (Zlib_jll).
+Standard zlib backend (Zlib_jll). Use `backend=GZip.ZLIB` to select.
 """
 struct ZlibBackend <: GZBackend end
 
 """
     ZlibNGBackend <: GZBackend
 
-Alternative backend using zlib-ng (ZlibNG_jll), a high-performance fork of zlib.
+Default backend using zlib-ng (ZlibNG_jll), a high-performance fork of zlib.
 """
 struct ZlibNGBackend <: GZBackend end
 

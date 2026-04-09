@@ -4,8 +4,9 @@ A Julia interface for gzip functions in [zlib](http://zlib.net), a free,
 general-purpose, legally unencumbered, lossless data-compression library.
 
 GZip.jl provides `GZipStream`, a drop-in `IO` replacement for reading and
-writing gzip (`.gz`) files. It supports both standard zlib and
-[zlib-ng](https://github.com/zlib-ng/zlib-ng) backends.
+writing gzip (`.gz`) files. It defaults to the high-performance
+[zlib-ng](https://github.com/zlib-ng/zlib-ng) backend; standard zlib is
+also available via `backend=GZip.ZLIB`.
 
 ## Installation
 
@@ -72,6 +73,69 @@ GZip.open("small.gz", "wb9") do io
     write(io, data)
 end
 ```
+
+## Header Metadata
+
+[`gzheader`](@ref) reads gzip header fields (RFC 1952) without decompressing:
+
+```julia
+h = gzheader("data.gz")
+h.name     # original filename, or nothing
+h.mtime    # modification time as Unix timestamp (0 = not set)
+h.comment  # file comment, or nothing
+h.os       # OS identifier (0x03 = Unix)
+h.extra    # extra field data, or nothing
+h.is_text  # hint that content is ASCII text
+```
+
+!!! note
+    Files created by GZip.jl (via zlib/zlib-ng) will have `name=nothing` and
+    `mtime=0`, because the zlib `gzopen` API does not set these header fields.
+    Files created by command-line `gzip` typically include the original filename
+    and modification time.
+
+## File Descriptor I/O
+
+[`gzdopen`](@ref) wraps an existing file descriptor as a gzip stream:
+
+```julia
+# Wrap an open IOStream's file descriptor
+raw = open("data.gz", "r")
+gz = gzdopen(fd(raw), "r")
+data = read(gz, String)
+close(gz)
+close(raw)
+```
+
+`gzdopen` duplicates the file descriptor internally, so closing the
+`GZipStream` does not close the original.
+
+## Error Handling
+
+GZip.jl throws three exception types:
+
+- [`GZError`](@ref) — gzip-level errors (corrupt data, stream errors). Contains
+  an error code (`err`) and message (`err_str`).
+- [`ZError`](@ref) — zlib-level errors (version mismatch, memory). Same fields.
+- `SystemError` — OS-level errors (file not found, bad file descriptor).
+
+```julia
+try
+    gzopen("missing.gz") do io
+        read(io, String)
+    end
+catch e
+    if e isa SystemError
+        # file not found, permission denied, etc.
+    elseif e isa GZError
+        # corrupt gzip data, CRC mismatch, etc.
+        println("gzip error $(e.err): $(e.err_str)")
+    end
+end
+```
+
+Corrupt data is typically detected on `read` or `close` (CRC check happens
+at stream close).
 
 ## Backends: zlib-ng and zlib
 

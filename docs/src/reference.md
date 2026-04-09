@@ -2,16 +2,56 @@
 CurrentModule = GZip
 ```
 
-## Functions
+# API Reference
 
-```@autodocs
-Modules = [GZip]
-Order   = [:function]
+## Module
+
+```@docs
+GZip
+```
+
+## Opening and Closing
+
+```@docs
+gzopen
+gzdopen
+GZip.open
+```
+
+## Header Metadata
+
+```@docs
+gzheader
+GZipHeader
+```
+
+## Low-level I/O
+
+```@docs
+gzgetc
+gzgets
+gzread
+gzungetc
+gzputc
+gzwrite
+gzbuffer
 ```
 
 ## Types
 
-```@autodocs
-Modules = [GZip]
-Order   = [:type]
+```@docs
+GZipStream
+GZBackend
+ZlibBackend
+ZlibNGBackend
+ZLIB
+ZLIBNG
+ZFileOffset
+```
+
+## Errors
+
+```@docs
+GZError
+ZError
 ```

@@ -57,7 +57,6 @@ import Base: show, fd, close, flush, truncate, seek,
 
 export
   GZipStream,
-  show,
 
 # Backend types
   GZBackend,
@@ -83,15 +82,6 @@ export
   write,
   unsafe_write,
   peek,
-
-# lower-level io functions
-  gzgetc,
-  gzungetc,
-  gzgets,
-  gzputc,
-  gzwrite,
-  gzread,
-  gzbuffer,
 
 # File offset
   ZFileOffset,
@@ -130,7 +120,8 @@ export
   Z_DEFAULT_BUFSIZE,
   Z_BIG_BUFSIZE
 
-# End export
+# Low-level C wrappers are not exported but accessible as GZip.gzgetc, etc:
+# gzgetc, gzungetc, gzgets, gzputc, gzwrite, gzread, gzbuffer
 
 include("zlib.jl")
 include("gz.jl")

@@ -54,7 +54,7 @@ GZip.jl is a thin wrapper around zlib's `gz*` C functions, which handle file I/O
 
 **Use GZip.jl** when you need zlib-ng performance or gzip header metadata access.
 
-**Use Inflate.jl** if you want a pure Julia library for header metadata access and decompression.
+**Use [Inflate.jl](https://github.com/GunnarFarneback/Inflate.jl)** if you want a pure Julia library for header metadata access and decompression.
 
 **Use [ChunkCodecLibZlib.jl](https://github.com/JuliaIO/ChunkCodecs.jl/tree/main/LibZlib)** when you need one-shot in-memory compression with configurable compression level and output size hints.
 

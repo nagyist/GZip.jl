@@ -52,8 +52,9 @@ using Base.Libc
 
 import Base: show, fd, close, flush, truncate, seek,
              seekend, skip, position, eof, read,
-             readline, write, unsafe_write, peek,
-             isreadable, iswritable
+             readline, write, unsafe_read, unsafe_write, peek,
+             isopen, isreadable, iswritable,
+             bytesavailable, readavailable, readbytes!
 
 export
   GZipStream,

@@ -250,7 +250,7 @@ function gzopen(fname::AbstractString, gzmode::AbstractString, gz_buf_size::Inte
     end
     iswrite = ('w' in gzmode || 'a' in gzmode)
     s = GZipStream(fname, gz_file, gz_buf_size, backend, iswrite)
-    iswrite || peek(s) # Set EOF-bit for empty files (read mode only)
+    iswrite || _peek(s) # Set EOF-bit for empty files (read mode only)
     return s
 end
 gzopen(fname::AbstractString, gzmode::AbstractString; backend::GZBackend=ZLIBNG) = gzopen(fname, gzmode, Z_DEFAULT_BUFSIZE; backend)
@@ -304,7 +304,7 @@ function gzdopen(name::AbstractString, fd::Integer, gzmode::AbstractString, gz_b
     end
     iswrite = ('w' in gzmode || 'a' in gzmode)
     s = GZipStream(name, gz_file, gz_buf_size, backend, iswrite)
-    iswrite || peek(s) # Set EOF-bit for empty files (read mode only)
+    iswrite || _peek(s) # Set EOF-bit for empty files (read mode only)
     return s
 end
 gzdopen(fd::Integer, gzmode::AbstractString, gz_buf_size::Integer; backend::GZBackend=ZLIBNG) = gzdopen(string("<fd ",fd,">"), fd, gzmode, gz_buf_size; backend)
@@ -328,6 +328,7 @@ function close(s::GZipStream)
     return ret
 end
 
+isopen(s::GZipStream) = !s._closed
 isreadable(s::GZipStream) = !s._closed && !s._write
 iswritable(s::GZipStream) = !s._closed && s._write
 
@@ -352,7 +353,16 @@ position(s::GZipStream, raw::Bool=false) = raw ? gz_offset(s.backend, s.gz_file)
 
 eof(s::GZipStream) = Bool(gz_eof(s.backend, s.gz_file))
 
-function peek(s::GZipStream)
+function peek(s::GZipStream, ::Type{UInt8})
+    s._closed && throw(EOFError())
+    c = gzgetc_raw(s)
+    c == -1 && throw(EOFError())
+    gzungetc(c, s)
+    UInt8(c)
+end
+
+# Internal peek that returns -1 at EOF (used for setting EOF bit)
+function _peek(s::GZipStream)
     c = gzgetc_raw(s)
     if c != -1
         gzungetc(c, s)
@@ -360,9 +370,20 @@ function peek(s::GZipStream)
     c
 end
 
+function unsafe_read(s::GZipStream, p::Ptr{UInt8}, n::UInt)
+    remaining = n
+    while remaining > 0
+        ret = gzread(s, p, remaining)
+        ret == 0 && throw(EOFError())
+        p += ret
+        remaining -= ret
+    end
+    nothing
+end
+
 function read(s::GZipStream, ::Type{UInt8})
     ret = gzgetc(s)  # throws EOFError or GZError on failure
-    peek(s) # force eof to be set
+    _peek(s) # force eof to be set
     UInt8(ret)
 end
 
@@ -427,6 +448,40 @@ end
 
 write(s::GZipStream, b::UInt8) = (gzputc(s, b); 1)
 unsafe_write(s::GZipStream, p::Ptr{UInt8}, nb::UInt) = Int(gzwrite(s, p, nb))
+
+bytesavailable(s::GZipStream) = s._closed ? 0 : Int(unsafe_load(reinterpret(Ptr{Cuint}, s.gz_file)))
+
+function readavailable(s::GZipStream)
+    navail = bytesavailable(s)
+    if navail == 0
+        # No bytes buffered; do one read to fill the buffer
+        buf = Vector{UInt8}(undef, Z_BIG_BUFSIZE)
+        n = gzread(s, pointer(buf), length(buf))
+        resize!(buf, n)
+    else
+        buf = Vector{UInt8}(undef, navail)
+        gzread(s, pointer(buf), navail)
+        buf
+    end
+end
+
+function readbytes!(s::GZipStream, buf::AbstractVector{UInt8}, nb::Int=length(buf))
+    olb = lb = length(buf)
+    nr = 0
+    while nr < nb
+        if nr >= lb
+            lb = min(nb, max(lb * 2, Z_BIG_BUFSIZE))
+            resize!(buf, lb)
+        end
+        ret = gzread(s, pointer(buf) + nr, min(lb - nr, nb - nr))
+        ret == 0 && break
+        nr += ret
+    end
+    if lb > olb && lb > nr
+        resize!(buf, nr)
+    end
+    nr
+end
 
 # ---------------------------------------------------------------------------
 # Gzip header metadata (RFC 1952)

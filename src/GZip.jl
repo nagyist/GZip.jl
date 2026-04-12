@@ -68,19 +68,6 @@ export
 # IO functions (open is not exported; use GZip.open)
   gzopen,
   gzdopen,
-  fd,
-  close,
-  flush,
-  truncate,
-  seek,
-  skip,
-  position,
-  eof,
-  read,
-  readline,
-  write,
-  unsafe_write,
-  peek,
 
 # Errors
   GZError,

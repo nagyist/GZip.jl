@@ -360,21 +360,6 @@ function peek(s::GZipStream)
     c
 end
 
-# Mimics read(s::IOStream, a::Array{T})
-function read(s::GZipStream, a::Array{T}) where {T}
-    if isbitstype(T)
-        nb = length(a)*sizeof(T)
-        ret = gzread(s, pointer(a), nb)
-        if ret < nb
-            throw(EOFError())
-        end
-        peek(s) # force eof to be set
-        a
-    else
-        invoke(read!, Tuple{IO,Array}, s, a)
-    end
-end
-
 function read(s::GZipStream, ::Type{UInt8})
     ret = gzgetc(s)  # throws EOFError or GZError on failure
     peek(s) # force eof to be set
@@ -390,24 +375,6 @@ function read(s::GZipStream; bufsize::Int = Z_BIG_BUFSIZE)
         if ret == 0
             resize!(buf, len)
             return buf
-        end
-        len += ret
-        if len == length(buf)
-            resize!(buf, max(length(buf) * 2, bufsize))
-        end
-    end
-end
-
-# For this function, it's really unfortunate that zlib is
-# not integrated with ios
-function read(s::GZipStream, ::Type{String}; bufsize::Int = Z_BIG_BUFSIZE)
-    buf = Array{UInt8}(undef, bufsize)
-    len = 0
-    while true
-        ret = gzread(s, pointer(buf)+len, length(buf)-len)
-        if ret == 0
-            resize!(buf, len)
-            return String(copy(buf))
         end
         len += ret
         if len == length(buf)
@@ -459,7 +426,6 @@ function readline(s::GZipStream; keep::Bool=false)
 end
 
 write(s::GZipStream, b::UInt8) = (gzputc(s, b); 1)
-write(s::GZipStream, a::Array{UInt8}) = Int(gzwrite(s, pointer(a), sizeof(a)))
 unsafe_write(s::GZipStream, p::Ptr{UInt8}, nb::UInt) = Int(gzwrite(s, p, nb))
 
 # ---------------------------------------------------------------------------

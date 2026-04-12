@@ -260,11 +260,11 @@ function run_backend_tests(; backend=GZip.ZLIB)
                 r2 = zeros(T, BUFSIZE)
 
                 b2_infile = gzopen(b_array_fn; backend)
-                read(b2_infile, b2);
+                read!(b2_infile, b2);
                 close(b2_infile)
 
                 r2_infile = gzopen(r_array_fn; backend)
-                read(r2_infile, r2);
+                read!(r2_infile, r2);
                 close(r2_infile)
 
                 @test b == b2

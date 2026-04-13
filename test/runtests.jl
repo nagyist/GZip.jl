@@ -59,9 +59,9 @@ function run_backend_tests(; backend=GZip.ZLIB)
 
         # Test peek
         gzfile = gzopen(test_compressed, "r"; backend)
-        @test peek(gzfile) == UInt(first_char)
+        @test peek(gzfile) == UInt8(first_char)
         read(gzfile, String)
-        @test peek(gzfile) == -1
+        @test_throws EOFError peek(gzfile)
         close(gzfile)
 
         # Corrupt header (leave the gzip magic 2-byte header intact)
@@ -602,6 +602,127 @@ end
         end
     end
 end
+
+@testset "isopen" begin
+    tmp = mktempdir()
+    fn = joinpath(tmp, "isopen.gz")
+    try
+        gzopen(fn, "w") do io
+            @test isopen(io)
+            write(io, "test")
+        end
+        s = gzopen(fn)
+        @test isopen(s)
+        close(s)
+        @test !isopen(s)
+    finally
+        rm(tmp, recursive=true)
+    end
+end
+
+@testset "peek throws EOFError at EOF" begin
+    tmp = mktempdir()
+    fn = joinpath(tmp, "peek.gz")
+    try
+        gzopen(fn, "w") do io
+            write(io, 0x0a)
+        end
+        gzopen(fn, "r") do io
+            @test peek(io) == 0x0a
+            read(io)
+            @test_throws EOFError peek(io)
+        end
+        # Closed stream
+        s = gzopen(fn, "r")
+        close(s)
+        @test_throws EOFError peek(s)
+    finally
+        rm(tmp, recursive=true)
+    end
+end
+
+@testset "bytesavailable" begin
+    tmp = mktempdir()
+    fn = joinpath(tmp, "ba.gz")
+    try
+        gzopen(fn, "w") do io
+            write(io, "hello world")
+        end
+        gzopen(fn) do io
+            # After open, peek has been called so buffer is filled
+            @test bytesavailable(io) == 11
+            read(io, UInt8)
+            @test bytesavailable(io) == 10
+            read(io)
+            @test bytesavailable(io) == 0
+        end
+        # Closed stream
+        s = gzopen(fn)
+        close(s)
+        @test bytesavailable(s) == 0
+    finally
+        rm(tmp, recursive=true)
+    end
+end
+
+@testset "readavailable" begin
+    tmp = mktempdir()
+    fn = joinpath(tmp, "ra.gz")
+    try
+        data = rand(UInt8, 10_000)
+        gzopen(fn, "w") do io
+            write(io, data)
+        end
+        gzopen(fn) do io
+            chunks = UInt8[]
+            while !eof(io)
+                append!(chunks, readavailable(io))
+            end
+            @test chunks == data
+        end
+    finally
+        rm(tmp, recursive=true)
+    end
+end
+
+@testset "unsafe_read" begin
+    tmp = mktempdir()
+    fn = joinpath(tmp, "unsafe.gz")
+    try
+        data = rand(UInt8, 100_000)
+        gzopen(fn, "w") do io
+            write(io, data)
+        end
+        gzopen(fn) do io
+            buf = Vector{UInt8}(undef, length(data))
+            read!(io, buf)
+            @test buf == data
+            @test_throws EOFError read!(io, Vector{UInt8}(undef, 1))
+        end
+    finally
+        rm(tmp, recursive=true)
+    end
+end
+
+@testset "Non-ASCII filenames" begin
+    tmp = mktempdir()
+    try
+        for name in ["données.gz", "日本語.gz", "αβγ.gz", "emoji🎉.gz"]
+            fn = joinpath(tmp, name)
+            data = "test data for $name"
+            gzopen(fn, "w") do io
+                write(io, data)
+            end
+            result = gzopen(fn) do io
+                read(io, String)
+            end
+            @test result == data
+        end
+    finally
+        rm(tmp, recursive=true)
+    end
+end
+
 
 using Aqua
 Aqua.test_all(GZip)

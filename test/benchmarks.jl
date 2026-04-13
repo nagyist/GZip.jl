@@ -5,6 +5,8 @@
 # Usage:
 #   julia --project=. test/benchmarks.jl            # full suite with real corpora
 #   julia --project=. test/benchmarks.jl --quick     # synthetic data only, fewer iterations
+#   julia --project=. test/benchmarks.jl --silesia   # Silesia corpus only (~5 min)
+#   julia --project=. test/benchmarks.jl --enwik9    # enwik9 only (~5 min)
 #   julia --project=. test/benchmarks.jl --4gb       # include 4GB dataset (enwik9 x4)
 #
 # Downloads enwik9 (~300MB) and Silesia corpus (~68MB) on first run.
@@ -17,6 +19,9 @@ using Downloads
 
 const QUICK = "--quick" in ARGS
 const RUN_4GB = "--4gb" in ARGS
+const RUN_SILESIA = "--silesia" in ARGS
+const RUN_ENWIK9 = "--enwik9" in ARGS
+const RUN_ALL = !QUICK && !RUN_SILESIA && !RUN_ENWIK9 && !RUN_4GB
 const DATA_DIR = joinpath(@__DIR__, "data")
 
 # ---------------------------------------------------------------------------
@@ -158,9 +163,10 @@ end
 
 function bench_read(data::Vector{UInt8}, backend, backend_name::String;
                     compressed_file::String)
+    buf = Vector{UInt8}(undef, length(data))
     r = bench("read", backend_name, length(data)) do
         GZip.open(compressed_file, "r"; backend=backend) do gz
-            read(gz)
+            read!(gz, buf)
         end
     end
     r
@@ -309,36 +315,34 @@ function main()
         data = rand(UInt8, 10_000_000)  # 10MB random
         append!(all_results, run_suite("Synthetic random (10MB)", data; levels=[1, 6]))
     else
-        # Full mode: download and use real corpora
         println()
         println("--- Preparing datasets ---")
         println()
 
-        # Silesia corpus (~200MB)
-        print("Silesia corpus:\n")
-        silesia_dir = ensure_silesia()
-        silesia_data = load_silesia(silesia_dir)
-        println()
+        if RUN_ALL || RUN_SILESIA
+            print("Silesia corpus:\n")
+            silesia_dir = ensure_silesia()
+            silesia_data = load_silesia(silesia_dir)
+            println()
+            append!(all_results, run_suite("Silesia corpus", silesia_data; levels=[1, 6, 9]))
+            silesia_data = nothing
+            GC.gc()
+        end
 
-        # enwik9 (1GB)
-        print("enwik9:\n")
-        enwik9_path = ensure_enwik9()
-        println()
+        if RUN_ALL || RUN_ENWIK9
+            print("enwik9:\n")
+            enwik9_path = ensure_enwik9()
+            println()
+            enwik9_data = load_file(enwik9_path)
+            append!(all_results, run_suite("enwik9 (Wikipedia XML)", enwik9_data; levels=[1, 6, 9]))
+            enwik9_data = nothing
+            GC.gc()
+        end
 
-        # Run benchmarks on each dataset
-        append!(all_results, run_suite("Silesia corpus", silesia_data; levels=[1, 6, 9]))
-
-        # Free silesia before loading enwik9
-        silesia_data = nothing
-        GC.gc()
-
-        enwik9_data = load_file(enwik9_path)
-        append!(all_results, run_suite("enwik9 (Wikipedia XML)", enwik9_data; levels=[1, 6, 9]))
-        enwik9_data = nothing
-        GC.gc()
-
-        # 4GB test (enwik9 x4) — opt-in via --4gb
         if RUN_4GB
+            print("enwik9:\n")
+            enwik9_path = ensure_enwik9()
+            println()
             data_4gb = make_4gb(enwik9_path)
             GC.gc()
             append!(all_results, run_suite("enwik9 x4 (4GB)", data_4gb; levels=[1, 6]))

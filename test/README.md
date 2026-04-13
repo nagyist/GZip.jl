@@ -9,7 +9,11 @@ decompression, and roundtrip operations.
 # Fast run with synthetic data (~1 min)
 julia --project=. test/benchmarks.jl --quick
 
-# Full run with real corpora (~30-50 min)
+# Individual corpus
+julia --project=. test/benchmarks.jl --silesia   # ~5 min
+julia --project=. test/benchmarks.jl --enwik9     # ~5 min
+
+# Full run with all corpora (~10 min)
 julia --project=. test/benchmarks.jl
 
 # Include 4GB dataset (enwik9 x4, needs ~16GB RAM)
@@ -34,7 +38,7 @@ Sources:
 ## What is measured
 
 - **write** — compress data to a gzip file (levels 1, 6, 9)
-- **read** — decompress a gzip file (both backends read the same zlib-compressed file for fairness)
+- **read** — decompress a gzip file into a pre-allocated buffer via `read!` (both backends read the same zlib-compressed file for fairness)
 - **roundtrip** — write then read (levels 1, 6, 9)
 
 Each benchmark reports median, mean, min, max times, and throughput in MB/s
@@ -42,32 +46,32 @@ Each benchmark reports median, mean, min, max times, and throughput in MB/s
 
 ## Sample results
 
-zlib 1.3.1 vs zlib-ng 2.3.2, Julia 1.12.5, Linux x86_64 (AMD EPYC 7513).
+zlib 1.3.1 vs zlib-ng 2.3.2, Julia 1.12.6, macOS arm64 (Apple M2 Max).
 
-### enwik9 — 1GB Wikipedia XML (compression ratio 3.09x)
-
-| Benchmark | zlib | zlib-ng | Speedup |
-|---|---|---|---|
-| write (level=1) | 93 MB/s | 229 MB/s | **2.46x** |
-| write (level=6) | 27 MB/s | 69 MB/s | **2.54x** |
-| write (level=9) | 21 MB/s | 32 MB/s | **1.50x** |
-| read | 225 MB/s | 366 MB/s | **1.62x** |
-| roundtrip (level=1) | 66 MB/s | 136 MB/s | **2.07x** |
-| roundtrip (level=6) | 24 MB/s | 57 MB/s | **2.37x** |
-| roundtrip (level=9) | 20 MB/s | 29 MB/s | **1.51x** |
-
-### Silesia corpus — 55MB mixed data
+### Synthetic random — 10MB incompressible data (ratio 1.00x)
 
 | Benchmark | zlib | zlib-ng | Speedup |
 |---|---|---|---|
-| write (level=1) | 46 MB/s | 98 MB/s | **2.14x** |
-| write (level=6) | 45 MB/s | 42 MB/s | 0.94x |
-| write (level=9) | 44 MB/s | 46 MB/s | 1.05x |
-| read | 454 MB/s | 512 MB/s | **1.13x** |
-| roundtrip (level=1) | 42 MB/s | 69 MB/s | **1.65x** |
+| write (level=1) | 41 MB/s | 84 MB/s | **2.05x** |
+| write (level=6) | 37 MB/s | 45 MB/s | **1.23x** |
+| read | 2,279 MB/s | 3,759 MB/s | **1.65x** |
+| roundtrip (level=1) | 40 MB/s | 62 MB/s | **1.53x** |
+| roundtrip (level=6) | 36 MB/s | 44 MB/s | **1.22x** |
+
+### Silesia corpus — 55MB mixed data (ratio 1.00x)
+
+| Benchmark | zlib | zlib-ng | Speedup |
+|---|---|---|---|
+| write (level=1) | 41 MB/s | 84 MB/s | **2.04x** |
+| write (level=6) | 37 MB/s | 45 MB/s | **1.23x** |
+| write (level=9) | 36 MB/s | 44 MB/s | **1.23x** |
+| read | 849 MB/s | 959 MB/s | **1.13x** |
+| roundtrip (level=1) | 40 MB/s | 62 MB/s | **1.57x** |
+| roundtrip (level=6) | 35 MB/s | 43 MB/s | **1.24x** |
+| roundtrip (level=9) | 35 MB/s | 42 MB/s | **1.21x** |
 
 ### Key takeaways
 
-- **Compression**: zlib-ng is 2-2.5x faster on compressible text data at levels 1 and 6.
-- **Decompression**: zlib-ng is 1.6x faster on compressible data (enwik9).
-- **Roundtrip**: zlib-ng wins across all levels on enwik9 (up to 2.37x at level 6).
+- **Compression**: zlib-ng is ~2x faster at level 1, ~1.2x at levels 6 and 9.
+- **Decompression**: zlib-ng is 1.1-1.7x faster depending on data compressibility.
+- **Roundtrip**: zlib-ng wins across all levels (up to 1.57x at level 1).

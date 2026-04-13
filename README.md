@@ -60,4 +60,4 @@ GZip.jl is a thin wrapper around zlib's `gz*` C functions, which handle file I/O
 
 ## Documentation
 
-See the [full documentation](https://juliaio.github.io/GZip.jl/dev) for details, including benchmarks.
+See the [full documentation](https://juliaio.github.io/GZip.jl/dev) for details, including [benchmarks](test/README.md).

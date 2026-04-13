@@ -5,7 +5,7 @@
 
 A Julia interface for gzip functions in [zlib](http://zlib.net). Provides `GZipStream` for reading and writing gzip files, with zlib-ng support and gzip header metadata access.
 
-Defaults to the [zlib-ng](https://github.com/zlib-ng/zlib-ng) backend for up to 2.5x faster compression. Standard zlib is also available via `backend=GZip.ZLIB`.
+Defaults to the [zlib-ng](https://github.com/zlib-ng/zlib-ng) backend for up to 2.5x faster compression and 2.2x faster decompression. Standard zlib is also available via `backend=GZip.ZLIB`.
 
 ## Quick Start
 

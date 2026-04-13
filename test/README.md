@@ -37,41 +37,39 @@ Sources:
 
 ## What is measured
 
-- **write** — compress data to a gzip file (levels 1, 6, 9)
+- **write** — compress data to a gzip file (levels 1, 9)
 - **read** — decompress a gzip file into a pre-allocated buffer via `read!` (both backends read the same zlib-compressed file for fairness)
-- **roundtrip** — write then read (levels 1, 6, 9)
+- **roundtrip** — write then read (levels 1, 9)
 
 Each benchmark reports median, mean, min, max times, and throughput in MB/s
 (based on uncompressed data size).
 
 ## Sample results
 
-zlib 1.3.1 vs zlib-ng 2.3.2, Julia 1.12.6, macOS arm64 (Apple M2 Max).
+zlib 1.3.1 vs zlib-ng 2.3.3, Julia 1.12.5, Linux x86_64 (AMD EPYC 7513).
 
-### Synthetic random — 10MB incompressible data (ratio 1.00x)
-
-| Benchmark | zlib | zlib-ng | Speedup |
-|---|---|---|---|
-| write (level=1) | 41 MB/s | 84 MB/s | **2.05x** |
-| write (level=6) | 37 MB/s | 45 MB/s | **1.23x** |
-| read | 2,279 MB/s | 3,759 MB/s | **1.65x** |
-| roundtrip (level=1) | 40 MB/s | 62 MB/s | **1.53x** |
-| roundtrip (level=6) | 36 MB/s | 44 MB/s | **1.22x** |
-
-### Silesia corpus — 55MB mixed data (ratio 1.00x)
+### enwik9 — 1GB Wikipedia XML (compression ratio 3.09x)
 
 | Benchmark | zlib | zlib-ng | Speedup |
 |---|---|---|---|
-| write (level=1) | 41 MB/s | 84 MB/s | **2.04x** |
-| write (level=6) | 37 MB/s | 45 MB/s | **1.23x** |
-| write (level=9) | 36 MB/s | 44 MB/s | **1.23x** |
-| read | 849 MB/s | 959 MB/s | **1.13x** |
-| roundtrip (level=1) | 40 MB/s | 62 MB/s | **1.57x** |
-| roundtrip (level=6) | 35 MB/s | 43 MB/s | **1.24x** |
-| roundtrip (level=9) | 35 MB/s | 42 MB/s | **1.21x** |
+| write (level=1) | 92 MB/s | 231 MB/s | **2.52x** |
+| write (level=9) | 21 MB/s | 33 MB/s | **1.56x** |
+| read | 296 MB/s | 656 MB/s | **2.22x** |
+| roundtrip (level=1) | 67 MB/s | 144 MB/s | **2.16x** |
+| roundtrip (level=9) | 19 MB/s | 31 MB/s | **1.61x** |
+
+### Silesia corpus — 55MB mixed data
+
+| Benchmark | zlib | zlib-ng | Speedup |
+|---|---|---|---|
+| write (level=1) | 46 MB/s | 97 MB/s | **2.13x** |
+| write (level=9) | 44 MB/s | 47 MB/s | **1.08x** |
+| read | 1,041 MB/s | 1,575 MB/s | **1.51x** |
+| roundtrip (level=1) | 42 MB/s | 75 MB/s | **1.76x** |
+| roundtrip (level=9) | 42 MB/s | 45 MB/s | **1.08x** |
 
 ### Key takeaways
 
-- **Compression**: zlib-ng is ~2x faster at level 1, ~1.2x at levels 6 and 9.
-- **Decompression**: zlib-ng is 1.1-1.7x faster depending on data compressibility.
-- **Roundtrip**: zlib-ng wins across all levels (up to 1.57x at level 1).
+- **Compression**: zlib-ng is up to 2.5x faster at level 1, 1.1-1.6x at level 9.
+- **Decompression**: zlib-ng is 1.5-2.2x faster depending on data compressibility.
+- **Roundtrip**: zlib-ng wins across all levels (up to 2.2x at level 1).

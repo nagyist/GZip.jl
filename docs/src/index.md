@@ -170,27 +170,27 @@ data = GZip.open(read, "data.gz"; backend=GZip.ZLIB)
 
 ### Benchmarks
 
-zlib 1.3.1 vs zlib-ng 2.3.2, Julia 1.12.5, Linux x86_64 (AMD EPYC 7513).
+zlib 1.3.1 vs zlib-ng 2.3.3, Julia 1.12.5, Linux x86_64 (AMD EPYC 7513).
 
 **enwik9 (1GB Wikipedia XML, compression ratio 3.09x):**
 
 | Benchmark | zlib | zlib-ng | Speedup |
 |:---|:---|:---|:---|
-| write (level=1) | 93 MB/s | 229 MB/s | **2.46x** |
-| write (level=6) | 27 MB/s | 69 MB/s | **2.54x** |
-| write (level=9) | 21 MB/s | 32 MB/s | **1.50x** |
-| read | 225 MB/s | 366 MB/s | **1.62x** |
-| roundtrip (level=1) | 66 MB/s | 136 MB/s | **2.07x** |
-| roundtrip (level=6) | 24 MB/s | 57 MB/s | **2.37x** |
-| roundtrip (level=9) | 20 MB/s | 29 MB/s | **1.51x** |
+| write (level=1) | 92 MB/s | 231 MB/s | **2.52x** |
+| write (level=9) | 21 MB/s | 33 MB/s | **1.56x** |
+| read | 296 MB/s | 656 MB/s | **2.22x** |
+| roundtrip (level=1) | 67 MB/s | 144 MB/s | **2.16x** |
+| roundtrip (level=9) | 19 MB/s | 31 MB/s | **1.61x** |
 
 **Silesia corpus (55MB mixed data):**
 
 | Benchmark | zlib | zlib-ng | Speedup |
 |:---|:---|:---|:---|
-| write (level=1) | 46 MB/s | 98 MB/s | **2.14x** |
-| read | 454 MB/s | 512 MB/s | **1.13x** |
-| roundtrip (level=1) | 42 MB/s | 69 MB/s | **1.65x** |
+| write (level=1) | 46 MB/s | 97 MB/s | **2.13x** |
+| write (level=9) | 44 MB/s | 47 MB/s | **1.08x** |
+| read | 1041 MB/s | 1575 MB/s | **1.51x** |
+| roundtrip (level=1) | 42 MB/s | 75 MB/s | **1.76x** |
+| roundtrip (level=9) | 42 MB/s | 45 MB/s | **1.08x** |
 
 Run benchmarks yourself with `julia --project=. test/benchmarks.jl` (see `test/README.md`).
 

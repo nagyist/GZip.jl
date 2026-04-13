@@ -324,7 +324,7 @@ function main()
             silesia_dir = ensure_silesia()
             silesia_data = load_silesia(silesia_dir)
             println()
-            append!(all_results, run_suite("Silesia corpus", silesia_data; levels=[1, 6, 9]))
+            append!(all_results, run_suite("Silesia corpus", silesia_data; levels=[1, 9]))
             silesia_data = nothing
             GC.gc()
         end
@@ -334,7 +334,7 @@ function main()
             enwik9_path = ensure_enwik9()
             println()
             enwik9_data = load_file(enwik9_path)
-            append!(all_results, run_suite("enwik9 (Wikipedia XML)", enwik9_data; levels=[1, 6, 9]))
+            append!(all_results, run_suite("enwik9 (Wikipedia XML)", enwik9_data; levels=[1, 9]))
             enwik9_data = nothing
             GC.gc()
         end
